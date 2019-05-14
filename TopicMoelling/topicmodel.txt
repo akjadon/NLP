@@ -1,0 +1,332 @@
+
+#update.packages()
+#### Removing all the existing objects ######
+
+rm(list=ls())
+
+### install required packages ####
+
+pack <- function(pkg){
+  new.pkg <- pkg[!(pkg %in% installed.packages()[, "Package"])]
+  if (length(new.pkg)) 
+    install.packages(new.pkg, dependencies = TRUE)
+  sapply(pkg, require, character.only = TRUE)
+}
+
+packages <- c("ggplot2","wordcloud","tm","tidyverse","tidytext","topicmodels","SnowballC","wordcloud","RColorBrewer","LDAvis",
+              "magrittr","Rgraphviz","data.table")
+
+pack(packages)
+
+#install.packages("data.table", type = "source",repos = "http://Rdatatable.github.io/data.table")
+
+
+#source("https://bioconductor.org/biocLite.R")
+#biocLite("Rgraphviz")
+
+
+colsToKeep <- c("ITEM_ID","XMLFILE","INTERACTIONTYPE","OPPORTUNITYNAME","MEDICARECLAIMNUMBER","WRAPUPCOMMENTS")
+
+cool <- fread("C:\\Users\\ajadon1\\Desktop\\projects\\topic_modelling\\data\\data_1aug.csv",
+               header=TRUE, sep=",",select=colsToKeep, verbose=TRUE, na.strings = c(""," ","  ","NA","N/A","na","n/a"))
+
+## removing duplicates
+cool1 = unique(cool)
+
+
+#call3dt_unique <- unique(call3dt)
+
+#cool1 <- read.csv("C:\\Users\\ajadon1\\Desktop\\projects\\topic_modelling\\UHG_SAS_Data_5thAug_nodup.csv",
+  #               header=TRUE, strip.white = TRUE,sep=",", na.strings = c(""," ","  ","NA"))
+
+#cool1 <- cool1[c("Sl_No","TIER3COMMENTS","WRAPUPCOMMENTS","OPPORTUNITYCOMMENTS","TIER1_COMMENTS","REFUSALCOMMENTS",
+       #           "CASEPROCESSCOMMENTS","EXITINTERACTIONCOMMENTS")]
+
+#cool1$comment <- paste(cool1$TIER3COMMENTS,
+ #                        cool1$WRAPUPCOMMENTS,
+ #                        cool1$CASEPROCESSCOMMENTS,
+ #                       cool1$OPPORTUNITYCOMMENTS,
+  #                      cool1$TIER1_COMMENTS,
+  #                     cool1$REFUSALCOMMENTS  ,sep=","  ,collapse =NULL )
+
+#cool11 <- cool1[c('Sl_No','comment')]
+
+cool2 <- cool1[,"WRAPUPCOMMENTS"]
+
+sent_data1 <- as.data.frame(sent_data[,1])
+# Remove NA term ******************************/
+cool2 <- na.omit(cool2)
+
+##Conversing to lower case *****************************
+cool2 <- as.data.frame(tolower(cool2))
+# Removing special character like *, :, /, |, -, #, \\, ||
+cool2<- lapply(cool2, FUN=function(x) gsub("[*%\\#|||@]", " ", x))
+cool2<- lapply(cool2, FUN=function(x) gsub("[']", "", x))
+cool2<- lapply(cool2, FUN=function(x) gsub("[-]", " ", x))
+
+cool2 <- unlist(cool2)
+
+
+# Making corpus ******************************************
+
+cool_corpus <- Corpus(VectorSource(cool2))
+
+viewDocs <- function(d, n) {d %>% extract2(n) %>% as.character() %>% writeLines()}
+viewDocs(cool_corpus,1)
+
+# Remove numbers ***************************************
+cool_corpus <- tm_map(cool_corpus, removeNumbers)
+#Remove Punctuation *************************************
+cool_corpus <- tm_map(cool_corpus, removePunctuation)
+# Remove english stop words **********************
+cool_corpus <- tm_map(cool_corpus, removeWords, stopwords("SMART"))
+#change words
+cool_corpus <- tm_map(cool_corpus,content_transformer(gsub), pattern ="caller", replacement= "call")
+cool_corpus <- tm_map(cool_corpus,content_transformer(gsub), pattern ="doctors", replacement= "doctor")
+cool_corpus <- tm_map(cool_corpus,content_transformer(gsub), pattern ="problems", replacement= "problem")
+cool_corpus <- tm_map(cool_corpus,content_transformer(gsub), pattern ="prescriptions", replacement= "prescription")
+cool_corpus <- tm_map(cool_corpus,content_transformer(gsub), pattern ="questions", replacement= "question")
+cool_corpus <- tm_map(cool_corpus,content_transformer(gsub), pattern ="don not", replacement= "don't")
+cool_corpus <- tm_map(cool_corpus, removeWords, stopwords("SMART"))
+#kmi_corpus <- tm_map(kmi_corpus,content_transformer(gsub), pattern ="sat ", replacement= "satisfied")
+# Remove own stopwords *************************************
+cool_corpus <- tm_map(cool_corpus, removeWords, c("na","can", "info", "n/a", "nza","hipaaa","ver","vfd","hpa",
+                                                "hippa", "hipaav","ver'd", "verified", "sel", "member","hipaa","calls", "hipaa","called","calling",
+                                                "mbr","wasnt", "wants", "change", "changed", "september", "soon", "may",
+                                                "also", "will", "takeoverhipaa", "related","see","doesnt","outbound","name","ive","just",
+                                                "much","thank","bye","didnt","shes","cant","went","dont","everything","get","always",
+                                                "anything","can","cant","done","dont","far","getting","give","going","havent","just",
+                                                "keep","make","news","nothing","nwo","one","really","say","see","send","thats","theyre",
+                                                "thing","think","year","every","lot","know","use","never","people","things","time","now","got","hip"))
+# Remove extra space **********************************
+cool_corpus <- tm_map(cool_corpus, stripWhitespace)
+#steming of document 
+#kmi_corpus <- tm_map(kmi_corpus, stemDocument)
+# convert corpus to a Plain Text Document
+cool_corpus <- tm_map(cool_corpus,PlainTextDocument)
+# Creating document term matrix
+cool_corpus1 <- DocumentTermMatrix(cool_corpus)
+# Converting in to matrix
+matrix_1 <- as.matrix(cool_corpus1)
+
+# Obtaining frequency as a vector ************************
+freq <- colSums(as.matrix(cool_corpus1))
+length(freq)
+# Most frequent and least frequent term ****************
+ord <- order(freq)
+# Least frequent terms.
+freq[head(ord)]
+# Most frequent terms.
+freq[tail(ord)]
+# Frequency of frequencies.
+head(table(freq), 10)# a terms occured b times in the data 
+tail(table(freq), 10)
+# Identifying frequent items and association we limit the output to those terms 
+#that occur at least 100 *******************
+findFreqTerms(cool_corpus1, lowfreq=100)
+# associations with a word cancer*******************
+View(as.data.frame(findAssocs(cool_corpus1, "don", corlimit=0.20)))
+#Correlation plot
+plot(cool_corpus1,terms=findFreqTerms(cool_corpus1, lowfreq=100)[1:20],corThreshold=0.10)
+
+
+# frequency count of all words
+
+freq1 <- sort(colSums(as.matrix(cool_corpus1)), decreasing=TRUE)
+word_frequency <- data.frame(word=names(freq1), freq=freq1)
+# Creating word cloud with minimum freq 50*********
+set.seed(142)
+dark2 <- brewer.pal(6, "Dark2")
+wordcloud(names(freq1), freq1, min.freq=10, rot.per=0.2, colors=dark2)
+
+
+
+###### BI Gram 
+source("GenerateTDM.R")
+library(RWeka)
+tdm <- tdm.generate(cool_corpus1, 2)
+
+
+
+
+
+
+#test <- as.data.frame(cool2)
+
+# pre-processing:
+strings <- c("na","NA,NA,NA,NA,NA,NA","can", "info", "n/a", "nza","hipaaa","ver","vfd","hpa",
+             "hippa", "hipaav","ver'd", "verified", "sel", "member","hipaa","calls", "hipaa","called","calling",
+             "mbr","wasnt", "wants", "change", "changed", "september", "soon", "may",
+             "also", "will", "takeoverhipaa", "related","see","doesnt","outbound","name","ive","just",
+             "much","thank","bye","didnt","shes","cant","went","dont","everything","get","always",
+             "anything","can","cant","done","dont","far","getting","give","going","havent","just",
+             "keep","make","news","nothing","nwo","one","really","say","see","send","thats","theyre",
+             "thing","think","year","every","lot","know","use","never","people","things","time","now","got","hip")
+
+#cool2 <- as.data.frame(str_replace(cool2, "[strings]", ""))
+#cool21 <- apply(cool2$comment, 2, gsub(strings, "", cool2$comment))
+cool21<- lapply(cool2, FUN=function(x) gsub("[string]", "", x,ignore.case=T))
+cool21 <- unlist(cool21)
+
+reviews<-cool2
+
+
+reviews <- gsub("'", "", reviews)  # remove apostrophes
+reviews <- gsub("[[:punct:]]", " ", reviews)  # replace punctuation with space
+reviews <- gsub("[[:cntrl:]]", " ", reviews)  # replace control characters with space
+reviews <- gsub("^[[:space:]]+", "", reviews) # remove whitespace at beginning of documents
+reviews <- gsub("[[:space:]]+$", "", reviews) # remove whitespace at end of documents
+reviews <- tolower(reviews)  # force to lowercase
+
+## Text Pre-processing.
+## Creating a Corpus from the Orginal Function
+## interprets each element of the vector x as a document
+CorpusObj<- VectorSource(cool2$comment);
+CorpusObj<-Corpus(CorpusObj);
+CorpusObj <- tm_map(CorpusObj, tolower) # convert all text to lower case
+CorpusObj <- tm_map(CorpusObj, removePunctuation) 
+CorpusObj <- tm_map(CorpusObj, removeNumbers)
+CorpusObj <- tm_map(CorpusObj, removeWords, stopwords("english"))
+CorpusObj <- tm_map(CorpusObj, removeWords, stopwords("SMART"))
+CorpusObj <- tm_map(CorpusObj, removeWords,  c("na", "onlyna","nana"))
+CorpusObj <- tm_map(CorpusObj, stemDocument, language = "english") ## Stemming the words 
+CorpusObj<-tm_map(CorpusObj,stripWhitespace)
+
+
+
+
+
+
+head(reviews)
+
+# tokenize on space and output as a list:
+doc.list <- strsplit(reviews, "[[:space:]]+")
+
+# compute the table of terms:
+term.table <- table(unlist(doc.list))
+term.table <- sort(term.table, decreasing = TRUE)
+
+# remove terms that are stop words or occur fewer than 5 times:
+del <- names(term.table) %in% stop_words | term.table < 5
+term.table <- term.table[!del]
+vocab <- names(term.table)
+
+# now put the documents into the format required by the lda package:
+get.terms <- function(x) {
+  index <- match(x, vocab)
+  index <- index[!is.na(index)]
+  rbind(as.integer(index - 1), as.integer(rep(1, length(index))))
+}
+documents <- lapply(doc.list, get.terms)
+
+
+# Compute some statistics related to the data set:
+D <- length(documents)  # number of documents (2,000)
+W <- length(vocab)  # number of terms in the vocab (14,568)
+doc.length <- sapply(documents, function(x) sum(x[2, ]))  # number of tokens per document [312, 288, 170, 436, 291, ...]
+N <- sum(doc.length)  # total number of tokens in the data (546,827)
+term.frequency <- as.integer(term.table)  # frequencies of terms in the corpus [8939, 5544, 2411, 2410, 2143, ...]
+
+
+
+# MCMC and model tuning parameters:
+K <- 20
+G <- 5000
+alpha <- 0.02
+eta <- 0.02
+
+# Fit the model:
+library(lda)
+set.seed(357)
+t1 <- Sys.time()
+fit <- lda.collapsed.gibbs.sampler(documents = documents, K = K, vocab = vocab, 
+                                   num.iterations = G, alpha = alpha, 
+                                   eta = eta, initial = NULL, burnin = 0,
+                                   compute.log.likelihood = TRUE)
+t2 <- Sys.time()
+t2 - t1  # about 24 minutes on laptop
+
+
+theta <- t(apply(fit$document_sums + alpha, 2, function(x) x/sum(x)))
+phi <- t(apply(t(fit$topics) + eta, 2, function(x) x/sum(x)))
+MovieReviews <- list(phi = phi,
+                     theta = theta,
+                     doc.length = doc.length,
+                     vocab = vocab,
+                     term.frequency = term.frequency)
+#library(LDAvis)
+
+# create the JSON object to feed the visualization:
+json <- createJSON(phi = MovieReviews$phi, 
+                   theta = MovieReviews$theta, 
+                   doc.length = MovieReviews$doc.length, 
+                   vocab = MovieReviews$vocab, 
+                   term.frequency = MovieReviews$term.frequency)
+
+serVis(json, out.dir = 'vis', open.browser =TRUE ) 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+kmi_corpus <- Corpus(VectorSource(cool2))
+
+viewDocs <- function(d, n) {d %>% extract2(n) %>% as.character() %>% writeLines()}
+
+viewDocs(kmi_corpus,25)
+
+dim(cool2)
+
+## Text Pre-processing.
+## Creating a Corpus from the Orginal Function
+## interprets each element of the vector x as a document
+CorpusObj<- VectorSource(cool2$comment);
+CorpusObj<-Corpus(CorpusObj);
+CorpusObj <- tm_map(CorpusObj, tolower) # convert all text to lower case
+CorpusObj <- tm_map(CorpusObj, removePunctuation) 
+CorpusObj <- tm_map(CorpusObj, removeNumbers)
+CorpusObj <- tm_map(CorpusObj, removeWords, stopwords("english"))
+CorpusObj <- tm_map(CorpusObj, removeWords,  c("na", "onlyna","nana"))
+CorpusObj <- tm_map(CorpusObj, stemDocument, language = "english") ## Stemming the words 
+CorpusObj<-tm_map(CorpusObj,stripWhitespace)
+
+
+##create a term document matrix 
+CorpusObj.tdm <- TermDocumentMatrix(CorpusObj, control = list(minWordLength = 4))
+m <- as.matrix(CorpusObj.tdm)
+
+inspect(CorpusObj.tdm[1:100,1:100])
+
+findFreqTerms(CorpusObj.tdm, lowfreq=1003)
+
+dim(CorpusObj.tdm)
+CorpusObj.tdm.sp <- removeSparseTerms(CorpusObj.tdm, sparse=0.88)
+
+dim(CorpusObj.tdm.sp)
+
+## Show Remining words per 15 Document.
+inspect(CorpusObj.tdm.sp[1:10,1:15])
+
+## Words Cloud Visualizing
+#library(wordcloud)
+#library(RColorBrewer)
+mTDM <- as.matrix(CorpusObj.tdm)
+v <- sort(rowSums(mTDM),decreasing=TRUE)
+d <- data.frame(word = names(v),freq=v)
+pal <- brewer.pal(9, "BuGn")
+pal <- pal[-(1:2)]
+png("wordcloud.png", width=1280,height=800)
+wordcloud(d$word,d$freq, scale=c(8,.3),min.freq=2,max.words=100, random.order=T, rot.per=.15, colors=pal, vfont=c("sans serif","plain"))
+dev.off()
+
+
+
